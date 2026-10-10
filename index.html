@@ -1,0 +1,1292 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1726">
+  <meta name="description" content="Live GPS tracking and route history for your tourist boat.">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Boat Tracker">
+
+  <title>Tourist Boat Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="boat-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="boat-icon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1726;
+      --panel: rgba(13, 27, 44, .96);
+      --card: rgba(255,255,255,.055);
+      --border: rgba(255,255,255,.10);
+      --text: #f1f5f9;
+      --muted: #93a4b8;
+      --blue: #38bdf8;
+      --green: #34d399;
+      --red: #fb7185;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; touch-action: manipulation; }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: #172b3b;
+    }
+
+    .topbar {
+      position: fixed;
+      z-index: 500;
+      top: max(10px, env(safe-area-inset-top));
+      left: 10px;
+      right: 10px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .brand, .top-actions { pointer-events: auto; }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--panel);
+      box-shadow: 0 5px 22px #0003;
+      backdrop-filter: blur(14px);
+    }
+
+    .brand-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 35px;
+      width: 35px;
+      height: 35px;
+      border-radius: 11px;
+      background: #123c56;
+      font-size: 20px;
+    }
+
+    .brand-info { min-width: 0; }
+
+    .brand-title {
+      max-width: 48vw;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: 2px;
+      color: var(--green);
+      font-size: 9px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status.offline { color: var(--red); }
+
+    .top-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel);
+      color: white;
+      font-size: 18px;
+      box-shadow: 0 5px 20px #0003;
+    }
+
+    .dashboard {
+      position: fixed;
+      z-index: 500;
+      left: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      width: min(400px, calc(100vw - 24px));
+      max-height: min(66dvh, 570px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: 0 10px 40px #0004;
+      backdrop-filter: blur(18px);
+      scrollbar-width: thin;
+    }
+
+    .dashboard.collapsed {
+      max-height: none;
+      overflow: hidden;
+      padding-bottom: 11px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .panel-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .text-button {
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+    }
+
+    .stat-label {
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+
+    .stat-value {
+      overflow-wrap: anywhere;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .section-title {
+      margin: 15px 0 8px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .history-tools {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 8px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #17283a;
+      color: white;
+      font-size: 12px;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 9px;
+    }
+
+    .summary-item {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--card);
+    }
+
+    .summary-label {
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 8px;
+      font-weight: 800;
+    }
+
+    .summary-value {
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .panel-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-top: 11px;
+    }
+
+    .footer-status {
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .primary-button {
+      min-height: 40px;
+      padding: 9px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #087eae;
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .loading {
+      position: fixed;
+      z-index: 1000;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 12px 15px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      font-size: 12px;
+    }
+
+    .loading.hidden { display: none; }
+
+    .modal {
+      position: fixed;
+      z-index: 2000;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #020617cc;
+    }
+
+    .modal.open { display: flex; }
+
+    .modal-card {
+      width: min(430px, 100%);
+      max-height: 90dvh;
+      overflow-y: auto;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #0d1b2c;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .modal-title { font-size: 16px; font-weight: 800; }
+    .form-group { margin-bottom: 13px; }
+    .modal-help { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+    .boat-marker {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 3px solid white;
+      border-radius: 50%;
+      background: #0284c7;
+      box-shadow: 0 4px 15px #0005;
+      font-size: 19px;
+    }
+
+    .endpoint {
+      width: 13px;
+      height: 13px;
+      border: 3px solid white;
+      border-radius: 50%;
+      box-shadow: 0 1px 6px #0008;
+    }
+
+    .endpoint.start { background: #34d399; }
+    .endpoint.end { background: #fb7185; }
+
+    .leaflet-control-attribution { font-size: 9px !important; }
+
+    @media (max-width: 600px) {
+      .dashboard {
+        left: 8px;
+        bottom: max(8px, env(safe-area-inset-bottom));
+        width: calc(100vw - 16px);
+        max-height: 43dvh;
+        padding: 11px;
+        border-radius: 17px;
+      }
+
+      .dashboard.collapsed { max-height: none; }
+
+      .brand {
+        max-width: calc(100vw - 110px);
+        gap: 7px;
+        padding: 8px;
+      }
+
+      .brand-icon {
+        flex-basis: 30px;
+        width: 30px;
+        height: 30px;
+        font-size: 17px;
+      }
+
+      .brand-title { max-width: 37vw; font-size: 10px; }
+      .brand-subtitle { font-size: 9px; }
+      .status { font-size: 8px; }
+
+      .icon-button { width: 39px; height: 39px; }
+      .stat { padding: 8px; }
+      .stat-value { font-size: 13px; }
+      .section-title { margin-top: 12px; }
+    }
+
+    @media (max-height: 650px) {
+      .dashboard { max-height: 39dvh; }
+      .dashboard.collapsed { max-height: none; }
+      .summary { margin-top: 7px; }
+      .section-title { margin-top: 10px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map" aria-label="Live boat map"></div>
+
+  <div id="loading" class="loading">Connecting to tracker…</div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon">🚤</div>
+      <div class="brand-info">
+        <div id="boatName" class="brand-title">TOURIST EXPLORER 1</div>
+        <div class="brand-subtitle">Live boat tracking</div>
+      </div>
+      <div id="statusBadge" class="status">
+        <span class="status-dot"></span>
+        <span id="statusText">CONNECTING</span>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button id="locateButton" class="icon-button" aria-label="Locate boat" title="Locate boat">📍</button>
+      <button id="settingsButton" class="icon-button" aria-label="Settings" title="Settings">⚙️</button>
+      <button id="installButton" class="icon-button" aria-label="Install app" title="Install app" hidden>⬇</button>
+    </div>
+  </header>
+
+  <main id="dashboard" class="dashboard">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Boat overview</div>
+        <div class="panel-subtitle" id="liveSubtitle">Waiting for Firebase data</div>
+      </div>
+      <button id="collapseButton" class="text-button" aria-expanded="true">Minimize</button>
+    </div>
+
+    <div id="dashboardContent">
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">SPEED</div>
+          <div id="speed" class="stat-value">-- km/h</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">HEADING</div>
+          <div id="heading" class="stat-value">--</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">ROUTE DISTANCE</div>
+          <div id="distance" class="stat-value">--</div>
+        </div>
+      </div>
+
+      <div class="section-title">Route history</div>
+
+      <div class="history-tools">
+        <div>
+          <label class="field-label" for="historyDate">SELECT DATE</label>
+          <input id="historyDate" type="date">
+        </div>
+        <button id="todayButton" class="text-button">Today</button>
+      </div>
+
+      <div class="summary">
+        <div class="summary-item">
+          <div class="summary-label">FIRST ACTIVITY</div>
+          <div id="firstActivity" class="summary-value">--</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">LAST ACTIVITY</div>
+          <div id="lastActivity" class="summary-value">--</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">ACTIVE TIME</div>
+          <div id="activeDuration" class="summary-value">--</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">DAY STATUS</div>
+          <div id="dayStatus" class="summary-value">Waiting for data</div>
+        </div>
+      </div>
+
+      <div id="historyNote" class="note">Loading route history…</div>
+
+      <div class="panel-footer">
+        <div id="updatedStatus" class="footer-status">No data received yet</div>
+        <button id="trailButton" class="text-button">Hide trail</button>
+      </div>
+    </div>
+  </main>
+
+  <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div id="settingsTitle" class="modal-title">Tracker settings</div>
+        <button id="closeSettings" class="text-button" aria-label="Close settings">Close</button>
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="firebaseUrl">Firebase database URL</label>
+        <input id="firebaseUrl" type="url" autocomplete="url">
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="boatId">Boat ID</label>
+        <input id="boatId" type="text" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label class="field-label" for="firebaseAuth">Firebase auth token (optional)</label>
+        <input id="firebaseAuth" type="password" autocomplete="off">
+      </div>
+
+      <p class="modal-help">Use a secure Firebase access method for a public website. Do not publish a private service-account key in this page.</p>
+      <br>
+      <button id="saveSettings" class="primary-button" style="width:100%">Save settings</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    "use strict";
+
+    // ---------------------------------------------------------
+    // CONFIGURATION
+    // ---------------------------------------------------------
+
+    const DEFAULT_FIREBASE_URL =
+      "https://tourist-boat-tracker-default-rtdb.asia-southeast1.firebasedatabase.app";
+    const DEFAULT_BOAT_ID = "boat_01";
+    const DEFAULT_BOAT_NAME = "TOURIST EXPLORER 1";
+
+    // Assumption: firmware stores speed in km/h.
+    // Values below this are treated as stationary GPS noise.
+    const STATIONARY_SPEED_KMH = 2.5;
+
+    // Ignore tiny segments when calculating distance.
+    // The displayed route still uses the original valid GPS points.
+    const MIN_DISTANCE_SEGMENT_METERS = 5;
+
+    // Reject a segment over this distance if its timestamps are absent
+    // or it represents an implausible jump for the configured time.
+    const MAX_BOAT_SPEED_KMH = 60;
+
+    const LIVE_REFRESH_MS = 5000;
+    const HISTORY_REFRESH_MS = 15000;
+
+    let firebaseUrl = localStorage.getItem("firebaseUrl") || DEFAULT_FIREBASE_URL;
+    let boatId = localStorage.getItem("boatId") || DEFAULT_BOAT_ID;
+    let firebaseAuth = localStorage.getItem("firebaseAuth") || "";
+
+    let map;
+    let boatMarker = null;
+    let routeLine = null;
+    let startMarker = null;
+    let endMarker = null;
+    let routeVisible = true;
+    let currentPosition = null;
+    let firstLocationLoaded = false;
+    let historyPoints = [];
+    let selectedHistoryDate = localDateKey();
+    let lastHistoryFitKey = "";
+    let liveRequestRunning = false;
+    let historyRequestRunning = false;
+    let installPromptEvent = null;
+
+    const $ = id => document.getElementById(id);
+
+    // ---------------------------------------------------------
+    // DATE / TIMESTAMP HELPERS
+    // ---------------------------------------------------------
+
+    function localDateKey(date = new Date()) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function gpsDateToKey(value) {
+      if (!value) return "";
+      const text = String(value).trim();
+
+      // Quectel GPS date: DDMMYY
+      if (/^\d{6}$/.test(text)) {
+        const day = text.slice(0, 2);
+        const month = text.slice(2, 4);
+        const yy = Number(text.slice(4, 6));
+        const year = yy < 80 ? 2000 + yy : 1900 + yy;
+        return `${year}-${month}-${day}`;
+      }
+
+      if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+      return "";
+    }
+
+    function parseTimestamp(value) {
+      if (value === null || value === undefined || value === "") return 0;
+
+      if (typeof value === "number" || /^\d+$/.test(String(value))) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return 0;
+        // Firebase server timestamps are normally milliseconds.
+        return number < 100000000000 ? number * 1000 : number;
+      }
+
+      const parsed = Date.parse(String(value));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function pointTimestamp(point, dateKey) {
+      // Prefer the Firebase timestamp if present.
+      const timestamp = parseTimestamp(point.timestamp);
+      if (timestamp) return timestamp;
+
+      const date = gpsDateToKey(point.date) || dateKey;
+      const time = String(point.time || "").trim();
+      const match = time.match(/^(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/);
+
+      if (date && match) {
+        const milliseconds = (match[4] || "").padEnd(3, "0").slice(0, 3);
+        const iso = `${date}T${match[1]}:${match[2]}:${match[3]}.${milliseconds}Z`;
+        const parsed = Date.parse(iso);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+
+      const parsed = Date.parse(`${date}T${time}`);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function formatTime(value) {
+      if (value === null || value === undefined || value === "") return "--";
+
+      const timestamp = parseTimestamp(value);
+      if (timestamp) {
+        const date = new Date(timestamp);
+        return Number.isNaN(date.getTime())
+          ? "--"
+          : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      }
+
+      // Preserve firmware time-only strings if they are not parseable as dates.
+      return String(value);
+    }
+
+    function formatDuration(seconds) {
+      const total = Math.max(0, Math.floor(Number(seconds) || 0));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const remainder = total % 60;
+
+      if (hours) return `${hours}h ${minutes}m`;
+      if (minutes) return `${minutes}m ${remainder}s`;
+      return `${remainder}s`;
+    }
+
+    // ---------------------------------------------------------
+    // MAP
+    // ---------------------------------------------------------
+
+    function initializeMap() {
+      map = L.map("map", { zoomControl: false }).setView([20.5937, 78.9629], 5);
+
+      L.control.zoom({ position: "topright" }).addTo(map);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+    }
+
+    const boatIcon = L.divIcon({
+      className: "",
+      html: '<div class="boat-marker">🚤</div>',
+      iconSize: [38, 38],
+      iconAnchor: [19, 19]
+    });
+
+    const startIcon = L.divIcon({
+      className: "",
+      html: '<div class="endpoint start"></div>',
+      iconSize: [13, 13],
+      iconAnchor: [6, 6]
+    });
+
+    const endIcon = L.divIcon({
+      className: "",
+      html: '<div class="endpoint end"></div>',
+      iconSize: [13, 13],
+      iconAnchor: [6, 6]
+    });
+
+    // ---------------------------------------------------------
+    // FIREBASE
+    // ---------------------------------------------------------
+
+    function buildFirebaseUrl(path) {
+      const base = firebaseUrl.replace(/\/+$/, "");
+      let url = `${base}/${path.replace(/^\/+/, "")}.json`;
+
+      if (firebaseAuth) {
+        url += `?auth=${encodeURIComponent(firebaseAuth)}`;
+      }
+
+      return url;
+    }
+
+    async function firebaseGet(path) {
+      const response = await fetch(buildFirebaseUrl(path), {
+        method: "GET",
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error(`Firebase HTTP ${response.status}`);
+      }
+
+      return response.json();
+    }
+
+    // ---------------------------------------------------------
+    // LIVE LOCATION / SPEED
+    // ---------------------------------------------------------
+
+    async function updateLiveLocation() {
+      if (liveRequestRunning) return;
+      liveRequestRunning = true;
+
+      try {
+        const data = await firebaseGet(`boats/${boatId}/live`);
+
+        if (!data || typeof data !== "object") {
+          setOffline("NO GPS DATA");
+          return;
+        }
+
+        const lat = Number(data.lat ?? data.latitude);
+        const lng = Number(data.lng ?? data.longitude ?? data.lon);
+
+        if (
+          !Number.isFinite(lat) || !Number.isFinite(lng) ||
+          lat < -90 || lat > 90 || lng < -180 || lng > 180 ||
+          (lat === 0 && lng === 0)
+        ) {
+          setOffline("INVALID GPS");
+          return;
+        }
+
+        const suppliedSpeed = Number(data.speed ?? data.speedKmH);
+        const validSpeed = Number.isFinite(suppliedSpeed) && suppliedSpeed >= 0;
+        // This assumes the firmware's "speed" field is in km/h.
+        // Do not convert it again unless the firmware stores another unit.
+        const displayedSpeed = validSpeed && suppliedSpeed >= STATIONARY_SPEED_KMH
+          ? suppliedSpeed
+          : 0;
+
+        const suppliedHeading = Number(data.cog ?? data.courseDeg ?? data.heading);
+        const heading = Number.isFinite(suppliedHeading)
+          ? ((suppliedHeading % 360) + 360) % 360
+          : null;
+
+        currentPosition = {
+          lat,
+          lng,
+          speed: displayedSpeed,
+          rawSpeed: validSpeed ? suppliedSpeed : null,
+          heading,
+          name: data.name || DEFAULT_BOAT_NAME,
+          updatedAt: data.updatedAt ?? data.timestamp ?? null
+        };
+
+        $("boatName").textContent = currentPosition.name;
+        updateBoatMarker(currentPosition);
+        updateTelemetry(currentPosition);
+        setOnline();
+
+        $("updatedStatus").textContent = "Firebase connected";
+        $("loading").classList.add("hidden");
+      } catch (error) {
+        console.error("[LIVE] Firebase error:", error);
+        setOffline("CONNECTION ERROR");
+        $("liveSubtitle").textContent = "Unable to read live data";
+        $("updatedStatus").textContent = error.message;
+        $("loading").classList.add("hidden");
+      } finally {
+        liveRequestRunning = false;
+      }
+    }
+
+    function updateBoatMarker(position) {
+      const coords = [position.lat, position.lng];
+
+      if (!boatMarker) {
+        boatMarker = L.marker(coords, { icon: boatIcon, title: position.name }).addTo(map);
+      } else {
+        boatMarker.setLatLng(coords);
+      }
+
+      const speedText = position.rawSpeed === null
+        ? "Unavailable"
+        : `${position.speed.toFixed(1)} km/h`;
+
+      boatMarker.bindPopup(
+        `<strong>${escapeHtml(position.name)}</strong><br>` +
+        `Speed: ${speedText}<br>` +
+        `Location: ${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`
+      );
+
+      if (!firstLocationLoaded) {
+        map.setView(coords, 16);
+        firstLocationLoaded = true;
+      }
+    }
+
+    function updateTelemetry(position) {
+      $("speed").textContent = position.rawSpeed === null
+        ? "-- km/h"
+        : `${position.speed.toFixed(1)} km/h`;
+
+      $("heading").textContent = position.heading === null || position.speed === 0
+        ? "--"
+        : `${position.heading.toFixed(0)}°`;
+
+      $("liveSubtitle").textContent = position.speed === 0
+        ? "Live GPS · stationary / very slow"
+        : "Live GPS · movement reported";
+    }
+
+    // ---------------------------------------------------------
+    // HISTORY LOADING
+    // ---------------------------------------------------------
+
+    async function updateHistory() {
+      if (historyRequestRunning) return;
+      historyRequestRunning = true;
+      const requestedDate = selectedHistoryDate;
+
+      try {
+        const data = await firebaseGet(
+          `boats/${boatId}/history/${requestedDate}`
+        );
+
+        // Ignore results if the user switched dates while the request ran.
+        if (requestedDate !== selectedHistoryDate) return;
+
+        if (!data || typeof data !== "object") {
+          historyPoints = [];
+          drawRoute();
+          calculateDistance();
+          resetDailySummary();
+          $("historyNote").textContent = `No history data for ${requestedDate}.`;
+          return;
+        }
+
+        const rawPoints = Object.entries(data).filter(([key, value]) =>
+          /^point_\d+$/.test(key) && value && typeof value === "object"
+        );
+
+        historyPoints = rawPoints.map(([key, point]) => {
+          const lat = Number(point.lat ?? point.latitude);
+          const lng = Number(point.lng ?? point.longitude ?? point.lon);
+          const timestampMs = pointTimestamp(point, requestedDate);
+          const match = key.match(/^point_(\d+)$/);
+
+          return {
+            id: key,
+            order: match ? Number(match[1]) : 0,
+            lat,
+            lng,
+            timestampMs
+          };
+        }).filter(point =>
+          Number.isFinite(point.lat) &&
+          Number.isFinite(point.lng) &&
+          point.lat >= -90 && point.lat <= 90 &&
+          point.lng >= -180 && point.lng <= 180 &&
+          !(point.lat === 0 && point.lng === 0)
+        );
+
+        // Prefer actual timestamps if they are available for both points.
+        historyPoints.sort((a, b) => {
+          if (a.timestampMs && b.timestampMs && a.timestampMs !== b.timestampMs) {
+            return a.timestampMs - b.timestampMs;
+          }
+          return a.order - b.order;
+        });
+
+        drawRoute();
+        calculateDistance();
+        updateDailySummary(data.summary || {});
+
+        if (historyPoints.length === 0) {
+          $("historyNote").textContent =
+            `Found ${rawPoints.length} records, but none had valid coordinates.`;
+        } else if (historyPoints.length === 1) {
+          $("historyNote").textContent =
+            "One valid GPS point found. A trail needs at least two points.";
+        } else {
+          $("historyNote").textContent =
+            `${historyPoints.length} GPS points loaded. Trail uses recorded coordinates; distance filters small GPS drift.`;
+        }
+
+        console.log("[HISTORY] Date:", requestedDate);
+        console.log("[HISTORY] Raw point records:", rawPoints.length);
+        console.log("[HISTORY] Valid points:", historyPoints.length);
+        console.log("[HISTORY] Coordinates:", historyPoints);
+
+        const fitKey = requestedDate + ":" +
+          historyPoints.map(point => point.id).join(",");
+
+        if (historyPoints.length > 0 && fitKey !== lastHistoryFitKey) {
+          const bounds = L.latLngBounds(
+            historyPoints.map(point => [point.lat, point.lng])
+          );
+
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [35, 35], maxZoom: 17 });
+          }
+          lastHistoryFitKey = fitKey;
+        }
+      } catch (error) {
+        console.error("[HISTORY] Firebase error:", error);
+        $("historyNote").textContent =
+          `Could not load history: ${error.message}`;
+      } finally {
+        historyRequestRunning = false;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // TRAIL
+    // ---------------------------------------------------------
+
+    function removeLayerIfPresent(layer) {
+      if (layer && map && map.hasLayer(layer)) map.removeLayer(layer);
+    }
+
+    function drawRoute() {
+      removeLayerIfPresent(routeLine);
+      removeLayerIfPresent(startMarker);
+      removeLayerIfPresent(endMarker);
+
+      routeLine = null;
+      startMarker = null;
+      endMarker = null;
+
+      if (!map || !routeVisible || historyPoints.length < 2) return;
+
+      // Draw the original valid GPS positions, without the distance filter.
+      const coordinates = historyPoints.map(point => [point.lat, point.lng]);
+
+      routeLine = L.polyline(coordinates, {
+        color: "#38bdf8",
+        weight: 5,
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(map);
+
+      const first = historyPoints[0];
+      const last = historyPoints[historyPoints.length - 1];
+
+      startMarker = L.marker([first.lat, first.lng], {
+        icon: startIcon,
+        interactive: false
+      }).addTo(map);
+
+      endMarker = L.marker([last.lat, last.lng], {
+        icon: endIcon,
+        interactive: false
+      }).addTo(map);
+
+      console.log("[ROUTE] Drawn:", coordinates.length, "positions");
+    }
+
+    // ---------------------------------------------------------
+    // DISTANCE CALCULATION
+    // ---------------------------------------------------------
+
+    function calculateDistanceBetween(a, b) {
+      const earthRadius = 6371000;
+      const toRadians = degrees => degrees * Math.PI / 180;
+
+      const lat1 = toRadians(a.lat);
+      const lat2 = toRadians(b.lat);
+      const deltaLat = toRadians(b.lat - a.lat);
+      const deltaLng = toRadians(b.lng - a.lng);
+
+      const h =
+        Math.sin(deltaLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) *
+        Math.sin(deltaLng / 2) ** 2;
+
+      return earthRadius * 2 * Math.atan2(
+        Math.sqrt(h),
+        Math.sqrt(Math.max(0, 1 - h))
+      );
+    }
+
+    function calculateDistance() {
+      let distanceMeters = 0;
+
+      for (let i = 1; i < historyPoints.length; i++) {
+        const previous = historyPoints[i - 1];
+        const current = historyPoints[i];
+        const segmentMeters = calculateDistanceBetween(previous, current);
+
+        // Suppress tiny jumps caused by stationary GPS drift.
+        if (segmentMeters < MIN_DISTANCE_SEGMENT_METERS) continue;
+
+        // Reject a segment that implies an implausible boat speed.
+        // When timestamps are unavailable, use the normal 30-second
+        // logging interval as a conservative fallback.
+        let elapsedSeconds = 30;
+
+        if (previous.timestampMs && current.timestampMs) {
+          const actualElapsed = (current.timestampMs - previous.timestampMs) / 1000;
+          if (actualElapsed > 0) elapsedSeconds = actualElapsed;
+        }
+
+        const impliedSpeedKmh = (segmentMeters / elapsedSeconds) * 3.6;
+
+        if (impliedSpeedKmh > MAX_BOAT_SPEED_KMH) {
+          console.warn("[DISTANCE] Ignored implausible jump:", {
+            segmentMeters,
+            elapsedSeconds,
+            impliedSpeedKmh
+          });
+          continue;
+        }
+
+        distanceMeters += segmentMeters;
+      }
+
+      $("distance").textContent = distanceMeters >= 1000
+        ? `${(distanceMeters / 1000).toFixed(2)} km`
+        : `${Math.round(distanceMeters)} m`;
+    }
+
+    // ---------------------------------------------------------
+    // DAILY SUMMARY FROM FIREBASE
+    // ---------------------------------------------------------
+
+    function updateDailySummary(summary) {
+      $("firstActivity").textContent = formatTime(summary.firstActivity);
+      $("lastActivity").textContent = formatTime(summary.lastActivity);
+      $("activeDuration").textContent = summary.activeSeconds === undefined
+        ? "--"
+        : formatDuration(summary.activeSeconds);
+
+      $("dayStatus").textContent = summary.firstActivity
+        ? "Activity recorded"
+        : "No activity recorded";
+    }
+
+    function resetDailySummary() {
+      $("firstActivity").textContent = "--";
+      $("lastActivity").textContent = "--";
+      $("activeDuration").textContent = "--";
+      $("dayStatus").textContent = "No data";
+    }
+
+    // ---------------------------------------------------------
+    // STATUS / SAFETY HELPERS
+    // ---------------------------------------------------------
+
+    function setOnline() {
+      $("statusBadge").classList.remove("offline");
+      $("statusText").textContent = "LIVE";
+    }
+
+    function setOffline(message) {
+      $("statusBadge").classList.add("offline");
+      $("statusText").textContent = message;
+      $("liveSubtitle").textContent = "Live data unavailable";
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[character]);
+    }
+
+    // ---------------------------------------------------------
+    // BUTTONS / DATE PICKER
+    // ---------------------------------------------------------
+
+    $("locateButton").addEventListener("click", () => {
+      if (!currentPosition) {
+        $("historyNote").textContent = "No live boat location is available yet.";
+        return;
+      }
+
+      map.setView([currentPosition.lat, currentPosition.lng], 17);
+      if (boatMarker) boatMarker.openPopup();
+    });
+
+    $("trailButton").addEventListener("click", () => {
+      routeVisible = !routeVisible;
+      $("trailButton").textContent = routeVisible ? "Hide trail" : "Show trail";
+      drawRoute();
+    });
+
+    $("collapseButton").addEventListener("click", () => {
+      const dashboard = $("dashboard");
+      const collapsed = dashboard.classList.toggle("collapsed");
+      $("dashboardContent").hidden = collapsed;
+      $("collapseButton").textContent = collapsed ? "Expand" : "Minimize";
+      $("collapseButton").setAttribute("aria-expanded", String(!collapsed));
+
+      // Let Leaflet recalculate after the panel changes size.
+      setTimeout(() => map.invalidateSize(), 200);
+    });
+
+    $("historyDate").value = selectedHistoryDate;
+
+    $("historyDate").addEventListener("change", () => {
+      if (!$("historyDate").value) return;
+
+      selectedHistoryDate = $("historyDate").value;
+      lastHistoryFitKey = "";
+      historyPoints = [];
+      drawRoute();
+      calculateDistance();
+      resetDailySummary();
+      $("historyNote").textContent = "Loading selected date…";
+      updateHistory();
+    });
+
+    $("todayButton").addEventListener("click", () => {
+      selectedHistoryDate = localDateKey();
+      $("historyDate").value = selectedHistoryDate;
+      lastHistoryFitKey = "";
+      updateHistory();
+    });
+
+    // ---------------------------------------------------------
+    // SETTINGS
+    // ---------------------------------------------------------
+
+    const settingsModal = $("settingsModal");
+
+    $("settingsButton").addEventListener("click", () => {
+      $("firebaseUrl").value = firebaseUrl;
+      $("boatId").value = boatId;
+      $("firebaseAuth").value = firebaseAuth;
+      settingsModal.classList.add("open");
+    });
+
+    function closeSettings() {
+      settingsModal.classList.remove("open");
+    }
+
+    $("closeSettings").addEventListener("click", closeSettings);
+
+    settingsModal.addEventListener("click", event => {
+      if (event.target === settingsModal) closeSettings();
+    });
+
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeSettings();
+    });
+
+    $("saveSettings").addEventListener("click", async () => {
+      const newUrl = $("firebaseUrl").value.trim().replace(/\/+$/, "");
+      const newBoatId = $("boatId").value.trim();
+      const newAuth = $("firebaseAuth").value.trim();
+
+      if (!/^https:\/\/.+/.test(newUrl) || !newBoatId) {
+        alert("Enter a valid HTTPS Firebase URL and Boat ID.");
+        return;
+      }
+
+      firebaseUrl = newUrl;
+      boatId = newBoatId;
+      firebaseAuth = newAuth;
+
+      localStorage.setItem("firebaseUrl", firebaseUrl);
+      localStorage.setItem("boatId", boatId);
+      localStorage.setItem("firebaseAuth", firebaseAuth);
+
+      closeSettings();
+
+      firstLocationLoaded = false;
+      lastHistoryFitKey = "";
+      historyPoints = [];
+
+      if (boatMarker) map.removeLayer(boatMarker);
+      boatMarker = null;
+
+      drawRoute();
+      await updateLiveLocation();
+      await updateHistory();
+    });
+
+    // ---------------------------------------------------------
+    // INSTALLABLE WEB APP
+    // ---------------------------------------------------------
+
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      installPromptEvent = event;
+      $("installButton").hidden = false;
+    });
+
+    $("installButton").addEventListener("click", async () => {
+      if (!installPromptEvent) {
+        alert("Use your browser menu and choose 'Install app' or 'Add to Home screen'.");
+        return;
+      }
+
+      installPromptEvent.prompt();
+      await installPromptEvent.userChoice;
+      installPromptEvent = null;
+      $("installButton").hidden = true;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      $("installButton").hidden = true;
+    });
+
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js")
+          .then(() => console.log("[PWA] Service worker registered"))
+          .catch(error => console.warn("[PWA] Service worker error:", error));
+      });
+    }
+
+    // ---------------------------------------------------------
+    // START
+    // ---------------------------------------------------------
+
+    function startTracker() {
+      initializeMap();
+      updateLiveLocation();
+      updateHistory();
+
+      setInterval(updateLiveLocation, LIVE_REFRESH_MS);
+      setInterval(updateHistory, HISTORY_REFRESH_MS);
+    }
+
+    window.addEventListener("load", startTracker);
+  </script>
+</body>
+</html>

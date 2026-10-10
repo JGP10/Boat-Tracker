@@ -1,0 +1,21 @@
+
+{
+  "id": "./",
+  "name": "Tourist Boat Tracker",
+  "short_name": "Boat Tracker",
+  "description": "Live boat GPS location and route history",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1726",
+  "theme_color": "#0b1726",
+  "icons": [
+    {
+      "src": "./boat-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
